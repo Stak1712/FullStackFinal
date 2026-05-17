@@ -1,0 +1,70 @@
+name: Fullstack CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-interview-platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Run backend tests with coverage
+        env:
+          ENV: test
+          DEBUG: "false"
+          JWT_SECRET: ci_test_secret
+          DATABASE_URL: sqlite:///./data/ci_test.db
+          STORAGE_PROVIDER: local
+          STORAGE_LOCAL_ROOT: ./data/ci_object_storage
+        run: pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-interview-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit/component tests with coverage
+        run: npm run test:coverage
+      - name: Build frontend
+        run: npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose configuration
+        run: docker compose -f docker-compose.yml config
+      - name: Build Docker images
+        run: docker compose -f docker-compose.yml build
+
+  deploy-placeholder:
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deployment hook
+        run: echo "Images are validated. Add server credentials or registry publishing here for production deployment."

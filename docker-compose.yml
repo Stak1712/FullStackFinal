@@ -1,0 +1,113 @@
+name: ai-interview-platform
+
+services:
+  backend:
+    build:
+      context: ./ai-interview-platform
+      dockerfile: Dockerfile
+    environment:
+      APP_NAME: AI Interview Platform
+      API_V1_PREFIX: /api/v1
+      ENV: production
+      DEBUG: "false"
+      JWT_SECRET: ${JWT_SECRET:-change_me_for_production}
+      DATABASE_URL: sqlite:////app/data/app.db
+      ACCESS_TOKEN_EXPIRES_SECONDS: 900
+      REFRESH_TOKEN_EXPIRES_DAYS: 7
+      STORAGE_PROVIDER: s3
+      STORAGE_LOCAL_ROOT: /app/data/object_storage
+      STORAGE_SIGNED_URL_EXPIRES_SECONDS: 900
+      STORAGE_MAX_FILE_SIZE_MB: 10
+      STORAGE_S3_BUCKET: ai-interview-assets
+      STORAGE_S3_ENDPOINT_URL: http://minio:9000
+      STORAGE_S3_REGION: us-east-1
+      STORAGE_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      STORAGE_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      PUBLIC_SITE_URL: http://localhost:8080
+      GITHUB_API_URL: https://api.github.com
+      GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
+      EXTERNAL_API_TIMEOUT_SECONDS: 5
+      EXTERNAL_API_RETRIES: 2
+      EXTERNAL_API_RATE_LIMIT_PER_MINUTE: 30
+      EXTERNAL_API_CACHE_TTL_SECONDS: 300
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/live', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./ai-interview-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_PUBLIC_SITE_URL: http://localhost:8080
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  backend-data:
+  minio-data:
+
+networks:
+  app-network:
+    driver: bridge

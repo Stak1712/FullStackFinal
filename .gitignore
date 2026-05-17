@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.playwright/
+test-results/
+playwright-report/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Local data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Docker temporary
+*.log
